@@ -21,8 +21,7 @@ Download the latest binary for your platform from the [Releases](https://github.
 
 | Platform | Architecture | File |
 |----------|--------------|------|
-| macOS | Intel (x64) | go-mcp-commander-darwin-amd64 |
-| macOS | Apple Silicon (ARM64) | go-mcp-commander-darwin-arm64 |
+| macOS | Universal (Intel + Apple Silicon) | go-mcp-commander-darwin-universal |
 | Linux | x64 | go-mcp-commander-linux-amd64 |
 | Linux | ARM64 | go-mcp-commander-linux-arm64 |
 | Windows | x64 | go-mcp-commander-windows-amd64.exe |

@@ -42,7 +42,7 @@ jobs:
   build:
     name: Build
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
@@ -60,9 +60,17 @@ jobs:
         run: |
           mkdir -p dist
 
-          # Darwin (macOS)
+          # Darwin (macOS) - build both architectures then create universal binary
           GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/go-mcp-commander-darwin-amd64 .
           GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/go-mcp-commander-darwin-arm64 .
+
+          # Create universal binary using lipo
+          lipo -create -output dist/go-mcp-commander-darwin-universal \
+            dist/go-mcp-commander-darwin-amd64 \
+            dist/go-mcp-commander-darwin-arm64
+
+          # Remove individual architecture binaries
+          rm dist/go-mcp-commander-darwin-amd64 dist/go-mcp-commander-darwin-arm64
 
           # Linux
           GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/go-mcp-commander-linux-amd64 .
@@ -74,7 +82,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum * > checksums.txt
+          shasum -a 256 * > checksums.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -116,8 +124,7 @@ jobs:
 
             | Platform | Architecture | File |
             |----------|--------------|------|
-            | macOS | Intel (x64) | go-mcp-commander-darwin-amd64 |
-            | macOS | Apple Silicon (ARM64) | go-mcp-commander-darwin-arm64 |
+            | macOS | Universal (Intel + Apple Silicon) | go-mcp-commander-darwin-universal |
             | Linux | x64 | go-mcp-commander-linux-amd64 |
             | Linux | ARM64 | go-mcp-commander-linux-arm64 |
             | Windows | x64 | go-mcp-commander-windows-amd64.exe |
@@ -126,7 +133,7 @@ jobs:
 
             Use the checksums.txt file to verify your download:
             ```bash
-            sha256sum -c checksums.txt
+            shasum -a 256 -c checksums.txt
             ```
           draft: false
           prerelease: false
