@@ -1,0 +1,16 @@
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "name": "go-mcp-commander",
+        "transport": {
+          "type": "stdio",
+          "command": "C:\\dev\\go-mcp-commander\\go-mcp-commander.exe",
+          "args": [
+            "-log-level", "info"
+          ]
+        }
+      }
+    ]
+  }
+}

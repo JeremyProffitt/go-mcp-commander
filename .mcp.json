@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "commander": {
+      "command": "C:\\dev\\go-mcp-commander\\go-mcp-commander.exe",
+      "args": [
+        "-log-level", "info"
+      ]
+    }
+  }
+}
