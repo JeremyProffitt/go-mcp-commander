@@ -55,12 +55,16 @@ func main() {
 	resolvedShell := resolvePriority(*shell, os.Getenv("MCP_SHELL"), "")
 	resolvedShellArg := resolvePriority(*shellArg, os.Getenv("MCP_SHELL_ARG"), "")
 
+	// Determine if we should add app subfolder (when log dir was specified by user)
+	addAppSubfolder := *logDir != "" || os.Getenv("MCP_LOG_DIR") != ""
+
 	// Initialize logger
 	var err error
 	logger, err = logging.NewLogger(logging.Config{
-		LogDir:  resolvedLogDir,
-		AppName: "go-mcp-commander",
-		Level:   logging.ParseLogLevel(resolvedLogLevel),
+		LogDir:          resolvedLogDir,
+		AppName:         "go-mcp-commander",
+		Level:           logging.ParseLogLevel(resolvedLogLevel),
+		AddAppSubfolder: addAppSubfolder,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
