@@ -35,6 +35,10 @@ var (
 )
 
 func main() {
+	// Load environment variables from ~/.mcp_env if it exists
+	// This must happen before flag parsing so env vars are available for defaults
+	logging.LoadEnvFile()
+
 	flag.Parse()
 
 	// Resolve configuration with priority: flags > env vars > defaults
