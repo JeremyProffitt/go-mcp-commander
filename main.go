@@ -28,6 +28,9 @@ var (
 	shell               = flag.String("shell", "", "Shell to use for command execution (default: /bin/sh on Unix, cmd on Windows)")
 	shellArg            = flag.String("shell-arg", "", "Shell argument for command execution (default: -c on Unix, /c on Windows)")
 	useDefaultBlocklist = flag.Bool("use-default-blocklist", true, "Use default blocklist of dangerous commands")
+	httpMode            = flag.Bool("http", false, "Run in HTTP mode instead of stdio")
+	httpPort            = flag.Int("port", 3000, "HTTP port (only used with --http)")
+	httpHost            = flag.String("host", "127.0.0.1", "HTTP host (only used with --http)")
 
 	// Global variables
 	logger *logging.Logger
@@ -117,10 +120,20 @@ func main() {
 
 	// Run server
 	logger.Info("MCP server starting...")
-	if err := server.Run(); err != nil {
-		logger.Error("Server error: %v", err)
-		logger.LogShutdown(fmt.Sprintf("error: %v", err))
-		os.Exit(1)
+	if *httpMode {
+		addr := fmt.Sprintf("%s:%d", *httpHost, *httpPort)
+		logger.Info("Starting HTTP server on %s", addr)
+		if err := server.RunHTTP(addr); err != nil {
+			logger.Error("HTTP server error: %v", err)
+			logger.LogShutdown(fmt.Sprintf("error: %v", err))
+			os.Exit(1)
+		}
+	} else {
+		if err := server.Run(); err != nil {
+			logger.Error("Server error: %v", err)
+			logger.LogShutdown(fmt.Sprintf("error: %v", err))
+			os.Exit(1)
+		}
 	}
 
 	logger.LogShutdown("normal")
