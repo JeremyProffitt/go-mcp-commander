@@ -1,97 +1,96 @@
 # MCP Client Integration Guide
 
-This guide explains how to configure MCP clients (Claude Code and Continue.dev) to connect to the go-mcp-commander server running in HTTP mode, including authentication configuration.
+This guide explains how to connect MCP clients to go-mcp-commander.
+
+## Quick Reference
+
+| Client | Config File | Transport |
+|--------|-------------|-----------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) | stdio |
+| Claude Code | `.mcp.json` or `.claude/mcp.json` | stdio |
+| Continue.dev | `.continue/config.json` | stdio or HTTP |
 
 ## Security Warning
 
-**IMPORTANT**: The commander MCP server executes shell commands. When integrating:
-1. **Always use authentication** in production
-2. **Restrict allowed commands** on the server side
-3. **Be cautious** about what commands you allow the LLM to execute
+go-mcp-commander executes shell commands. Always:
+1. Enable authentication in production (HTTP mode)
+2. Restrict allowed commands via `-allowed-commands`
+3. Review the default blocklist
 
-## Authentication Overview
-
-When running in HTTP mode with authentication enabled (via `MCP_AUTH_TOKEN` environment variable), all requests must include the `X-MCP-Auth-Token` header with the configured token value.
-
-## Claude Code Integration
+## Claude Desktop
 
 ### Configuration Location
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
 
-Claude Code configuration is stored in:
-- **macOS/Linux**: `~/.claude/claude_code_config.json`
-- **Windows**: `%USERPROFILE%\.claude\claude_code_config.json`
-
-### HTTP Mode Configuration
-
-```json
-{
-  "mcpServers": {
-    "commander": {
-      "type": "http",
-      "url": "http://your-alb-url:3000",
-      "headers": {
-        "X-MCP-Auth-Token": "your-secure-auth-token"
-      }
-    }
-  }
-}
-```
-
-### Configuration with Environment Variable
-
-```json
-{
-  "mcpServers": {
-    "commander": {
-      "type": "http",
-      "url": "http://your-alb-url:3000",
-      "headers": {
-        "X-MCP-Auth-Token": "${MCP_COMMANDER_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-### Local Development (stdio mode)
-
+### stdio Mode (Recommended)
 ```json
 {
   "mcpServers": {
     "commander": {
       "command": "/path/to/go-mcp-commander",
-      "args": ["--allowed-commands", "ls,cat,grep,pwd"],
-      "env": {}
+      "args": ["-log-level", "info"]
     }
   }
 }
 ```
 
-## Continue.dev Integration
-
-### HTTP Mode Configuration
-
+### With Restricted Commands
 ```json
 {
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "name": "commander",
-        "transport": {
-          "type": "http",
-          "url": "http://your-alb-url:3000",
-          "headers": {
-            "X-MCP-Auth-Token": "your-secure-auth-token"
-          }
-        }
-      }
-    ]
+  "mcpServers": {
+    "commander": {
+      "command": "/path/to/go-mcp-commander",
+      "args": [
+        "-allowed-commands", "git,npm,go,docker",
+        "-log-level", "info"
+      ]
+    }
   }
 }
 ```
 
-### Local Development (stdio mode)
+## Claude Code
 
+### Project-Level Configuration
+
+**File**: `.mcp.json` in project root
+```json
+{
+  "mcpServers": {
+    "commander": {
+      "command": "/path/to/go-mcp-commander",
+      "args": ["-log-level", "info"]
+    }
+  }
+}
+```
+
+### Workspace-Specific Configuration
+
+**File**: `.claude/mcp.json`
+```json
+{
+  "mcpServers": {
+    "commander": {
+      "command": "${workspaceFolder}/go-mcp-commander",
+      "args": [
+        "-log-dir", "${workspaceFolder}/logs",
+        "-log-level", "info"
+      ]
+    }
+  }
+}
+```
+
+**Variables**:
+| Variable | Meaning |
+|----------|---------|
+| `${workspaceFolder}` | Project root directory |
+
+## Continue.dev
+
+### stdio Mode
 ```json
 {
   "experimental": {
@@ -101,7 +100,7 @@ Claude Code configuration is stored in:
         "transport": {
           "type": "stdio",
           "command": "/path/to/go-mcp-commander",
-          "args": ["--allowed-commands", "ls,cat,grep,pwd"]
+          "args": ["-log-level", "info"]
         }
       }
     ]
@@ -109,44 +108,95 @@ Claude Code configuration is stored in:
 }
 ```
 
-## Testing the Connection
-
-### Using curl
-
-```bash
-# Test health endpoint (no auth required)
-curl http://your-alb-url:3000/health
-
-# Test MCP endpoint with auth
-curl -X POST http://your-alb-url:3000/ \
-    -H "Content-Type: application/json" \
-    -H "X-MCP-Auth-Token: your-secure-auth-token" \
-    -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
-
-# Execute a command
-curl -X POST http://your-alb-url:3000/ \
-    -H "Content-Type: application/json" \
-    -H "X-MCP-Auth-Token: your-secure-auth-token" \
-    -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_command","arguments":{"command":"echo hello"}},"id":2}'
+### HTTP Mode (Remote Server)
+```json
+{
+  "experimental": {
+    "modelContextProtocolServers": [
+      {
+        "name": "commander",
+        "transport": {
+          "type": "http",
+          "url": "http://your-server:3000",
+          "headers": {
+            "X-MCP-Auth-Token": "your-auth-token"
+          }
+        }
+      }
+    ]
+  }
+}
 ```
 
-## Security Best Practices
+## HTTP Mode Setup
 
-1. **Use HTTPS**: Always use HTTPS in production
-2. **Rotate tokens**: Implement regular token rotation
-3. **Audit commands**: Log and monitor all command executions
-4. **Least privilege**: Only allow commands that are absolutely necessary
-5. **Network isolation**: Restrict what the container can access
+### Server Configuration
+
+Start server with authentication:
+```bash
+MCP_AUTH_TOKEN=your-secure-token ./go-mcp-commander -http -port 3000
+```
+
+Environment variables:
+| Variable | Purpose |
+|----------|---------|
+| `MCP_AUTH_TOKEN` | Required auth token for HTTP mode |
+| `MCP_HTTP_PORT` | HTTP port (default: 3000) |
+
+### Client Authentication
+
+All HTTP requests must include:
+```
+X-MCP-Auth-Token: your-secure-token
+```
+
+### Testing HTTP Connection
+
+```bash
+# Health check (no auth required)
+curl http://localhost:3000/health
+
+# List tools (auth required)
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -H "X-MCP-Auth-Token: your-secure-token" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+
+# Execute command
+curl -X POST http://localhost:3000/ \
+  -H "Content-Type: application/json" \
+  -H "X-MCP-Auth-Token: your-secure-token" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"execute_command","arguments":{"command":"echo hello"}},"id":2}'
+```
 
 ## Troubleshooting
 
-### 401 Unauthorized
-- Verify the `X-MCP-Auth-Token` header matches the server's `MCP_AUTH_TOKEN`
+| Error | Cause | Solution |
+|-------|-------|----------|
+| 401 Unauthorized | Invalid or missing auth token | Verify `X-MCP-Auth-Token` matches server's `MCP_AUTH_TOKEN` |
+| Command Blocked | Command not in allowlist | Check `-allowed-commands` setting |
+| Command Blocked | Command in blocklist | Check `-blocked-commands` and default blocklist |
+| Timeout | Command took too long | Increase `-timeout` or command timeout parameter |
+| Connection Refused | Server not running | Start server with `-http` flag |
 
-### Command Blocked
-- Check the server's `MCP_ALLOWED_COMMANDS` and `MCP_BLOCKED_COMMANDS` settings
-- Review logs for blocked command details
+### Debug Logging
 
-### Timeout Errors
-- Increase `MCP_DEFAULT_TIMEOUT` on the server
-- Check for long-running commands
+Enable verbose logging:
+```bash
+./go-mcp-commander -log-level debug
+```
+
+Log file location:
+- **Unix**: `~/go-mcp-commander/logs/`
+- **Windows**: `%USERPROFILE%\go-mcp-commander\logs\`
+
+## Security Best Practices
+
+### Production Checklist
+
+1. **Authentication**: Always set `MCP_AUTH_TOKEN`
+2. **Command Restriction**: Use `-allowed-commands` whitelist
+3. **HTTPS**: Use TLS termination (ALB, nginx)
+4. **Token Rotation**: Rotate auth tokens regularly
+5. **Audit Logging**: Set `-log-level access` for command logging
+6. **Network Isolation**: Restrict server network access

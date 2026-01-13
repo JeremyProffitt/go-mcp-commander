@@ -1,165 +1,222 @@
-# ECS Deployment Guide for go-mcp-commander
+# ECS Deployment Guide
 
-This guide covers deploying go-mcp-commander as an HTTP service on AWS ECS (Elastic Container Service) using either Fargate or EC2 launch types.
+Deploy go-mcp-commander on AWS ECS (Fargate or EC2).
 
-## Security Warning
+## Quick Reference
 
-**IMPORTANT**: The commander MCP server executes shell commands. Deploying this in a production environment requires careful security consideration:
+| Component | Purpose |
+|-----------|---------|
+| ECR | Container registry for Docker image |
+| ECS | Container orchestration |
+| ALB | Load balancer for HTTP traffic |
+| Secrets Manager | Secure credential storage |
+| CloudWatch | Logging and monitoring |
 
-1. **Always enable authentication** via `MCP_AUTH_TOKEN`
-2. **Restrict allowed commands** via `MCP_ALLOWED_COMMANDS`
-3. **Use the default blocklist** to prevent dangerous commands
-4. **Run in a minimal container** with limited privileges
-5. **Use network isolation** to restrict what the container can access
-
-## Architecture Overview
+## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   MCP Client    │────▶│  Load Balancer  │────▶│   ECS Service   │
-│ (Claude Code/   │     │     (ALB)       │     │   (Fargate/EC2) │
-│  Continue.dev)  │     └─────────────────┘     └─────────────────┘
-└─────────────────┘              │                       │
-                                 │                       ▼
-                                 │              ┌─────────────────┐
-                                 │              │   Shell         │
-                                 │              │   Commands      │
-                                 │              └─────────────────┘
-                                 ▼
-                        ┌─────────────────┐
-                        │ Secrets Manager │
-                        └─────────────────┘
+MCP Client --> ALB --> ECS Service --> Shell Commands
+                |           |
+                v           v
+         Secrets Manager  CloudWatch Logs
 ```
 
 ## Prerequisites
 
 1. AWS CLI configured with appropriate permissions
-2. Docker installed locally for building images
-3. An ECR repository created for the image
-4. VPC with subnets configured for ECS
+2. Docker installed locally
+3. ECR repository created
+4. VPC with subnets configured
 
-## Quick Start
+## Deployment Steps
 
-### 1. Build and Push Docker Image
+### Step 1: Build and Push Image
 
 ```bash
 # Authenticate to ECR
-aws ecr get-login-password --region YOUR_REGION | docker login --username AWS --password-stdin YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com
+aws ecr get-login-password --region YOUR_REGION | \
+  docker login --username AWS --password-stdin \
+  YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com
 
-# Build the image
+# Build
 docker build -t go-mcp-commander .
 
-# Tag for ECR
-docker tag go-mcp-commander:latest YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/go-mcp-commander:latest
+# Tag
+docker tag go-mcp-commander:latest \
+  YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/go-mcp-commander:latest
 
-# Push to ECR
-docker push YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/go-mcp-commander:latest
+# Push
+docker push \
+  YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/go-mcp-commander:latest
 ```
 
-### 2. Create Secrets in AWS Secrets Manager
+### Step 2: Create Secrets
 
 ```bash
 aws secretsmanager create-secret \
-    --name mcp/commander \
-    --secret-string '{
-        "MCP_AUTH_TOKEN": "your-secure-auth-token",
-        "MCP_ALLOWED_COMMANDS": "ls,cat,grep,find,echo,pwd,whoami"
-    }'
+  --name mcp/commander \
+  --secret-string '{
+    "MCP_AUTH_TOKEN": "your-secure-auth-token",
+    "MCP_ALLOWED_COMMANDS": "ls,cat,grep,find,echo,pwd,whoami"
+  }'
 ```
 
-### 3. Create ECS Resources
+### Step 3: Create ECS Resources
 
 ```bash
-# Create CloudWatch Log Group
+# CloudWatch Log Group
 aws logs create-log-group --log-group-name /ecs/go-mcp-commander
 
 # Register Task Definition
 aws ecs register-task-definition --cli-input-json file://ecs-task-definition.json
 
-# Create ECS Cluster (if not exists)
+# Create Cluster
 aws ecs create-cluster --cluster-name mcp-servers
 
 # Create Service
 aws ecs create-service \
-    --cluster mcp-servers \
-    --service-name go-mcp-commander \
-    --task-definition go-mcp-commander \
-    --desired-count 1 \
-    --launch-type FARGATE \
-    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}"
+  --cluster mcp-servers \
+  --service-name go-mcp-commander \
+  --task-definition go-mcp-commander \
+  --desired-count 1 \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}"
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MCP_AUTH_TOKEN` | **Yes** | Token for HTTP authentication (REQUIRED for production) |
-| `MCP_ALLOWED_COMMANDS` | No | Comma-separated list of allowed command prefixes |
-| `MCP_BLOCKED_COMMANDS` | No | Comma-separated list of blocked command patterns |
-| `MCP_DEFAULT_TIMEOUT` | No | Default command timeout (default: 30s) |
-| `MCP_SHELL` | No | Shell to use (default: /bin/sh) |
-| `MCP_SHELL_ARG` | No | Shell argument (default: -c) |
-| `MCP_LOG_LEVEL` | No | Log level (default: info) |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MCP_AUTH_TOKEN` | Yes | - | HTTP authentication token |
+| `MCP_ALLOWED_COMMANDS` | No | - | Comma-separated allowed command prefixes |
+| `MCP_BLOCKED_COMMANDS` | No | - | Comma-separated blocked command patterns |
+| `MCP_DEFAULT_TIMEOUT` | No | `30s` | Default command timeout |
+| `MCP_SHELL` | No | `/bin/sh` | Shell executable |
+| `MCP_SHELL_ARG` | No | `-c` | Shell argument |
+| `MCP_LOG_LEVEL` | No | `info` | Log level |
 
 ### Default Blocked Commands
 
-The following dangerous commands are blocked by default:
-- `rm -rf /`
+These commands are blocked by default:
+- `rm -rf /`, `rm -rf /*`
 - `mkfs`
 - `dd`
-- `shutdown`
-- `reboot`
-- `halt`
-- `poweroff`
-- And more...
+- `shutdown`, `reboot`, `halt`, `poweroff`
+- Fork bombs
 
-### Authentication
+## Task Definition Example
 
-When `MCP_AUTH_TOKEN` is set, all HTTP requests must include the `X-MCP-Auth-Token` header.
-
-```bash
-curl -X POST http://your-alb-url:3000/ \
-    -H "Content-Type: application/json" \
-    -H "X-MCP-Auth-Token: your-secure-auth-token" \
-    -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```json
+{
+  "family": "go-mcp-commander",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "go-mcp-commander",
+      "image": "ACCOUNT.dkr.ecr.REGION.amazonaws.com/go-mcp-commander:latest",
+      "portMappings": [
+        {"containerPort": 3000, "protocol": "tcp"}
+      ],
+      "secrets": [
+        {
+          "name": "MCP_AUTH_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:mcp/commander:MCP_AUTH_TOKEN::"
+        }
+      ],
+      "environment": [
+        {"name": "MCP_ALLOWED_COMMANDS", "value": "ls,cat,grep,echo,pwd"},
+        {"name": "MCP_LOG_LEVEL", "value": "info"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/go-mcp-commander",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
 ```
 
-## Security Best Practices
+## Health Check
 
-1. **Always enable authentication**: Never run without `MCP_AUTH_TOKEN` in production
-2. **Restrict allowed commands**: Use `MCP_ALLOWED_COMMANDS` to whitelist only needed commands
-3. **Use private subnets**: Deploy in private subnets with no direct internet access
-4. **Minimal IAM permissions**: The task role should have minimal permissions
-5. **Network isolation**: Use security groups to restrict outbound access
-6. **Audit logging**: Enable CloudTrail and monitor command execution logs
-7. **Consider read-only filesystem**: Mount the container filesystem as read-only
-
-## Monitoring
-
-### CloudWatch Logs
-
-Logs are automatically sent to CloudWatch Logs at `/ecs/go-mcp-commander`.
-
-Monitor for:
-- Failed authentication attempts
-- Blocked command attempts
-- Command execution errors
-
-### Health Checks
-
-The service exposes a `/health` endpoint that returns:
+The `/health` endpoint returns:
 ```json
 {"status": "healthy", "server": "go-mcp-commander"}
 ```
 
+ALB health check configuration:
+| Setting | Value |
+|---------|-------|
+| Path | `/health` |
+| Protocol | HTTP |
+| Port | 3000 |
+| Interval | 30s |
+| Timeout | 5s |
+| Healthy threshold | 2 |
+| Unhealthy threshold | 3 |
+
+## Security Best Practices
+
+| Practice | Implementation |
+|----------|----------------|
+| Authentication | Always set `MCP_AUTH_TOKEN` |
+| Command Restriction | Use `MCP_ALLOWED_COMMANDS` whitelist |
+| Private Subnets | Deploy in private subnets |
+| Minimal IAM | Grant only required permissions |
+| Network Isolation | Restrict security group rules |
+| Audit Logging | Enable CloudTrail |
+| Read-Only FS | Mount container filesystem read-only |
+
+## Monitoring
+
+### CloudWatch Metrics
+
+Monitor:
+- CPU/Memory utilization
+- Request count
+- Error rate
+- Response latency
+
+### Log Queries
+
+```
+# Failed auth attempts
+fields @timestamp, @message
+| filter @message like /401/
+| sort @timestamp desc
+
+# Blocked commands
+fields @timestamp, @message
+| filter @message like /blocked/
+| sort @timestamp desc
+
+# Command executions
+fields @timestamp, @message
+| filter @message like /CMD_EXEC/
+| sort @timestamp desc
+```
+
 ## Troubleshooting
 
-### Common Issues
+| Issue | Check |
+|-------|-------|
+| Commands blocked | `MCP_ALLOWED_COMMANDS` and `MCP_BLOCKED_COMMANDS` settings |
+| Auth failures | `MCP_AUTH_TOKEN` matches client header |
+| Timeouts | Increase `MCP_DEFAULT_TIMEOUT` |
+| Container not starting | Check CloudWatch logs for errors |
+| Health check failing | Verify port 3000 is exposed and accessible |
 
-1. **Commands blocked**: Check `MCP_ALLOWED_COMMANDS` and `MCP_BLOCKED_COMMANDS`
-2. **Authentication failures**: Verify `MCP_AUTH_TOKEN` matches in client and server
-3. **Timeout errors**: Increase `MCP_DEFAULT_TIMEOUT` for long-running commands
+## Related Documentation
 
-See [INTEGRATION.md](./INTEGRATION.md) for configuring Claude Code and Continue.dev.
+- [INTEGRATION.md](./INTEGRATION.md) - Client configuration
+- [README.md](./README.md) - Server documentation
+- [TESTING.md](./TESTING.md) - Testing instructions

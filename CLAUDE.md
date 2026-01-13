@@ -1,87 +1,172 @@
-## MCP Server LLM Usability Checklist
+# Claude Code Guidelines for go-mcp-commander
 
-**IMPORTANT**: This checklist must be reviewed and all items verified on every update to this repository. Any issues found must be resolved before merging changes.
+This document provides guidelines for LLMs (Claude Code, etc.) working with this repository.
 
-### Tool Definitions
+## Repository Overview
 
-- [ ] **Clear Purpose**: Each tool has a description that clearly explains what it does and when to use it
-- [ ] **No Redundant Platform Names**: Descriptions don't include unnecessary "from [Platform]" text
-- [ ] **Parameter Hints**: Tool descriptions mention key parameters or capabilities
-- [ ] **Use Case Guidance**: Complex tools include when-to-use hints vs similar tools
-- [ ] **Consistent Naming**: All tools use snake_case naming convention
-- [ ] **Action Verbs**: Tool names start with action verbs (get_, list_, create_, update_, delete_, search_)
+**Purpose**: MCP server for secure shell command execution
+**Language**: Go 1.21+
+**Protocol**: Model Context Protocol (MCP) over stdio or HTTP
 
-### Parameter Documentation
+## Quick Reference
 
-- [ ] **Examples Provided**: All string parameters include format examples in descriptions
-- [ ] **Format Hints**: Date/time, ID, and structured parameters document expected formats
-- [ ] **Valid Values Listed**: Parameters with fixed options list valid values (e.g., "Status: 'open', 'closed', 'all'")
-- [ ] **No Redundant Defaults**: Default values are in the Default field, not repeated in description text
-- [ ] **Array Format Clear**: Array parameters explain expected item format
-- [ ] **Object Structure Documented**: Object parameters describe expected properties
-
-### Schema Constraints
-
-- [ ] **Numeric Bounds**: All limit/offset/count parameters have Minimum and Maximum constraints
-- [ ] **Integer Types**: Pagination and count parameters use "integer" not "number"
-- [ ] **Enum Values**: Categorical parameters have Enum arrays defined in schema
-- [ ] **Array Items Typed**: All array parameters have Items property with type defined
-- [ ] **Object Properties**: Complex object parameters have Properties defined where structure is known
-- [ ] **Pattern Validation**: ID fields have Pattern regex where format is standardized (optional)
-
-### Tool Annotations
-
-- [ ] **Title Set**: All tools have a human-readable Title annotation
-- [ ] **ReadOnlyHint**: All get_*, list_*, search_*, describe_* tools have ReadOnlyHint: true
-- [ ] **DestructiveHint**: All delete_* tools have DestructiveHint: true
-- [ ] **IdempotentHint**: Safe-to-retry operations have IdempotentHint: true
-- [ ] **OpenWorldHint**: Tools interacting with external systems have OpenWorldHint: true (optional)
-
-### Token Efficiency
-
-- [ ] **Concise Descriptions**: Tool descriptions are under 200 characters where possible
-- [ ] **No Duplicate Info**: Information isn't repeated between tool and parameter descriptions
-- [ ] **Abbreviated Common Terms**: Use "Max results" instead of "Maximum number of results to return"
-- [ ] **Consistent Parameter Docs**: Common parameters (limit, offset, page) use identical descriptions
-
-### Documentation
-
-- [ ] **README Tool Reference**: README includes descriptions of what each tool does
-- [ ] **Workflow Examples**: Common multi-tool workflows are documented
-- [ ] **Error Handling Guide**: Common errors and recovery strategies documented
-- [ ] **Parameter Patterns**: Common parameter formats (IDs, dates, queries) documented once
-
-### Code Quality
-
-- [ ] **Compiles Successfully**: `go build ./...` completes without errors
-- [ ] **Tests Pass**: `go test ./...` completes without failures
-- [ ] **No Unused Code**: No commented-out code or unused variables
-- [ ] **Consistent Formatting**: Code follows Go formatting standards (`go fmt`)
-
-### Pre-Commit Verification
-
-Before committing changes to this repository, run:
-
+### Build Commands
 ```bash
-# Verify compilation
-go build ./...
-
-# Run all tests
-go test ./...
-
-# Check formatting
-go fmt ./...
-
-# Verify tool definitions (manual review)
-# Review any new or modified tools against this checklist
+go build -o go-mcp-commander .        # Build binary
+go test -v ./...                       # Run all tests
+go test -v ./pkg/commander/...         # Test commander only
+go test -race -coverprofile=c.out ./...  # Tests with coverage
 ```
 
-### Issue Resolution Process
+### Run Commands
+```bash
+./go-mcp-commander                     # Default settings
+./go-mcp-commander -log-level debug    # Debug logging
+./go-mcp-commander -allowed-commands "git,npm"  # Restricted mode
+```
 
-If any checklist item fails:
+## Project Structure
 
-1. **Document the Issue**: Note which item failed and in which file
-2. **Fix the Issue**: Make the necessary code changes
-3. **Verify the Fix**: Re-run the relevant checks
-4. **Update Tests**: Add tests for new functionality if applicable
-5. **Re-verify Checklist**: Ensure fix didn't break other items
+```
+go-mcp-commander/
+  main.go              # Entry point, tool registration
+  pkg/
+    mcp/               # MCP protocol implementation
+      server.go        # Server logic
+      types.go         # Protocol types
+    commander/         # Command execution engine
+      commander.go     # Execute, validate commands
+    logging/           # Logging system
+      logging.go       # Log levels, file output
+  test/
+    mcp_test.go        # Integration tests
+```
+
+## Code Conventions
+
+### Tool Registration Pattern
+Tools are registered in `main.go` using:
+```go
+server.RegisterTool(mcp.Tool{
+    Name:        "tool_name",
+    Description: "What the tool does",
+    InputSchema: json.RawMessage(`{...}`),
+    Handler:     handlerFunction,
+})
+```
+
+### Error Handling Pattern
+```go
+if err != nil {
+    return nil, &mcp.Error{
+        Code:    mcp.InternalError,
+        Message: fmt.Sprintf("descriptive error: %v", err),
+    }
+}
+```
+
+### Test Pattern
+```go
+func TestFunctionName(t *testing.T) {
+    // Setup
+    cmd := NewCommander(Config{...})
+
+    // Execute
+    result, err := cmd.Execute(...)
+
+    // Verify
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+}
+```
+
+## Common Tasks
+
+### Adding a New Tool
+1. Define handler function in `main.go`
+2. Register with `server.RegisterTool()`
+3. Add tests in `pkg/mcp/server_test.go`
+4. Update README.md Tool Reference section
+
+### Modifying Command Validation
+1. Edit `pkg/commander/commander.go`
+2. Update `ValidateCommand()` method
+3. Add test cases in `pkg/commander/commander_test.go`
+
+### Changing Log Output
+1. Edit `pkg/logging/logging.go`
+2. Add new log level or format
+3. Test in `pkg/logging/logging_test.go`
+
+## LLM Usability Checklist
+
+Before committing changes, verify:
+
+### Tool Definitions
+- [ ] Tool has clear description explaining purpose
+- [ ] Parameter descriptions include format examples
+- [ ] Numeric parameters have min/max constraints
+- [ ] Boolean parameters document default values
+
+### Documentation
+- [ ] README Tool Reference is updated
+- [ ] Common Workflows section covers new features
+- [ ] Error Handling documents new error cases
+- [ ] Parameter Formats documents new formats
+
+### Code Quality
+- [ ] `go build ./...` succeeds
+- [ ] `go test ./...` passes
+- [ ] `go fmt ./...` shows no changes
+- [ ] No commented-out code
+
+## AWS Deployment Policy
+
+**CRITICAL**: All infrastructure changes must go through GitHub Actions pipelines.
+
+### Prohibited Actions
+- Direct `aws` CLI deployments
+- Direct `sam deploy` commands
+- Manual CloudFormation stack operations
+- Direct ECS service updates
+
+### Required Process
+1. Make code/infrastructure changes
+2. Commit and push to branch
+3. Create pull request
+4. Pipeline deploys on merge
+
+### Pipeline Failures
+If GitHub Actions pipeline fails:
+1. Use `/fix-pipeline` skill for automated diagnosis
+2. Review logs in Actions tab
+3. Fix identified issues
+4. Push fixes and re-trigger pipeline
+
+## Security Considerations
+
+### When Modifying Blocklist
+- Test all existing blocked commands still blocked
+- Verify new patterns don't create bypasses
+- Run security tests: `go test -v ./pkg/commander/... -run Block`
+
+### When Adding Commands
+- Consider if command could be dangerous
+- Add to default blocklist if necessary
+- Document security implications
+
+## File Locations
+
+| File | Purpose |
+|------|---------|
+| `main.go` | Server setup, tool registration |
+| `pkg/mcp/server.go` | MCP protocol handling |
+| `pkg/mcp/types.go` | Request/response types |
+| `pkg/commander/commander.go` | Command execution |
+| `pkg/logging/logging.go` | Log management |
+| `.mcp.json` | Local MCP configuration |
+| `README.md` | User documentation |
+| `TESTING.md` | Test instructions |
+| `INTEGRATION.md` | Client setup guides |
+| `ECS.md` | AWS deployment guide |
