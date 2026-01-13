@@ -100,6 +100,8 @@ type Property struct {
 	Enum        []string            `json:"enum,omitempty"`
 	Items       *Property           `json:"items,omitempty"`
 	Properties  map[string]Property `json:"properties,omitempty"`
+	Minimum     *int                `json:"minimum,omitempty"`
+	Maximum     *int                `json:"maximum,omitempty"`
 }
 
 type ListToolsResult struct {

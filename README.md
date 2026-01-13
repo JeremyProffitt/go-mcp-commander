@@ -10,6 +10,8 @@ A secure, cross-platform Model Context Protocol (MCP) server for executing syste
 - **Timeout Management**: Configurable command timeouts
 - **Working Directory**: Execute commands in specific directories
 - **Environment Variables**: Pass custom environment variables to commands
+- **Web Fetching**: Retrieve content from HTTP/HTTPS URLs with customizable headers and methods
+- **Google Search**: Perform web searches and retrieve results
 - **Comprehensive Logging**: Detailed logging with configurable levels
 - **MCP Protocol Compliant**: Full JSON-RPC 2.0 and MCP protocol support
 
@@ -133,6 +135,84 @@ Get information about the shell used for command execution.
   "shell": "/bin/sh",
   "shell_arg": "-c",
   "default_timeout": "30s"
+}
+```
+
+### web_fetch
+
+Fetch content from a URL and return the response body. Supports HTTP/HTTPS with customizable headers, methods, and timeouts.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | Yes | URL to fetch (must include http:// or https://) |
+| `method` | string | No | HTTP method: GET, POST, PUT, DELETE, HEAD, OPTIONS (default: GET) |
+| `headers` | object | No | HTTP headers as key-value pairs |
+| `body` | string | No | Request body for POST/PUT requests |
+| `timeout` | string | No | Request timeout (e.g., '30s', '1m'). Default: 30s, max: 5m |
+| `max_size` | integer | No | Max response size in bytes. Default: 1MB (1048576), max: 10MB |
+
+**Example:**
+```json
+{
+  "name": "web_fetch",
+  "arguments": {
+    "url": "https://api.github.com/users/octocat",
+    "headers": {
+      "Accept": "application/json"
+    },
+    "timeout": "10s"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "status_code": 200,
+  "status": "200 OK",
+  "content_length": 1234,
+  "content_type": "application/json",
+  "duration": "150ms",
+  "headers": {"Content-Type": "application/json", ...},
+  "body": "{\"login\": \"octocat\", ...}"
+}
+```
+
+### google_search
+
+Perform a Google search and return the search results page. Results contain raw HTML that can be parsed for links, snippets, and titles.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `query` | string | Yes | Search query string |
+| `num_results` | integer | No | Results to request (10-100, default: 10) |
+| `language` | string | No | Language code (e.g., 'en', 'es', 'fr'). Default: 'en' |
+| `safe_search` | string | No | Safe search level: off, moderate, strict. Default: moderate |
+| `timeout` | string | No | Request timeout. Default: 30s |
+
+**Example:**
+```json
+{
+  "name": "google_search",
+  "arguments": {
+    "query": "golang mcp server",
+    "num_results": 20,
+    "language": "en"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "query": "golang mcp server",
+  "status_code": 200,
+  "content_length": 45678,
+  "duration": "250ms",
+  "search_url": "https://www.google.com/search?q=golang+mcp+server&num=20&hl=en&safe=moderate",
+  "body": "<!doctype html>..."
 }
 ```
 
@@ -536,6 +616,115 @@ This section provides detailed information about each MCP tool for LLM consumpti
 }
 ```
 
+### web_fetch
+
+**Purpose**: Fetch content from HTTP/HTTPS URLs with full control over request parameters.
+
+**When to Use**:
+- Retrieving API responses (REST, GraphQL)
+- Downloading web page content
+- Making webhook calls
+- Testing HTTP endpoints
+- Fetching JSON/XML data
+
+**Parameters**:
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `url` | string | Yes | - | Full URL with protocol (http:// or https://) |
+| `method` | string | No | `GET` | HTTP method: GET, POST, PUT, DELETE, HEAD, OPTIONS |
+| `headers` | object | No | `{}` | Custom HTTP headers |
+| `body` | string | No | `""` | Request body for POST/PUT |
+| `timeout` | string | No | `30s` | Request timeout (max: 5m) |
+| `max_size` | integer | No | `1048576` | Max response size (1KB-10MB) |
+
+**Return Fields**:
+| Field | Type | Description |
+|-------|------|-------------|
+| `status_code` | integer | HTTP status code |
+| `status` | string | HTTP status text |
+| `content_length` | integer | Response body size in bytes |
+| `content_type` | string | Response Content-Type header |
+| `duration` | string | Request duration |
+| `headers` | object | Response headers |
+| `body` | string | Response body content |
+
+**Example Request** (API call):
+```json
+{
+  "name": "web_fetch",
+  "arguments": {
+    "url": "https://api.github.com/repos/user/repo",
+    "headers": {
+      "Accept": "application/vnd.github.v3+json",
+      "Authorization": "Bearer ghp_xxx"
+    }
+  }
+}
+```
+
+**Example Request** (POST with body):
+```json
+{
+  "name": "web_fetch",
+  "arguments": {
+    "url": "https://api.example.com/webhook",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"event\": \"deploy\", \"status\": \"success\"}"
+  }
+}
+```
+
+### google_search
+
+**Purpose**: Perform Google web searches and retrieve results page HTML.
+
+**When to Use**:
+- Finding documentation or tutorials
+- Researching technical topics
+- Discovering relevant websites
+- Finding code examples
+- General web research
+
+**Parameters**:
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | Yes | - | Search query (supports Google operators) |
+| `num_results` | integer | No | `10` | Results to request (10-100) |
+| `language` | string | No | `en` | Language code for results |
+| `safe_search` | string | No | `moderate` | Safe search: off, moderate, strict |
+| `timeout` | string | No | `30s` | Request timeout |
+
+**Return Fields**:
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | Original search query |
+| `status_code` | integer | HTTP status code |
+| `content_length` | integer | Response size in bytes |
+| `duration` | string | Request duration |
+| `search_url` | string | Full Google search URL used |
+| `body` | string | HTML content of search results page |
+
+**Google Search Operators**:
+- `site:github.com` - Search within specific site
+- `"exact phrase"` - Search for exact phrase
+- `filetype:pdf` - Search for specific file type
+- `intitle:keyword` - Search in page titles
+- `-excluded` - Exclude term from results
+
+**Example Request**:
+```json
+{
+  "name": "google_search",
+  "arguments": {
+    "query": "site:stackoverflow.com golang http client",
+    "num_results": 20
+  }
+}
+```
+
 ## Common Workflows
 
 ### Workflow 1: Project Build and Test
@@ -630,6 +819,64 @@ Step 1: Execute with extended timeout
 Step 2: Verify installation
   Tool: execute_command
   Args: {"command": "npm list --depth=0", "working_directory": "/project"}
+```
+
+### Workflow 6: Research and Documentation Lookup
+
+Find documentation and examples for a technical topic:
+
+```
+Step 1: Search for documentation
+  Tool: google_search
+  Args: {"query": "site:pkg.go.dev net/http client example", "num_results": 10}
+
+Step 2: Fetch a specific documentation page
+  Tool: web_fetch
+  Args: {"url": "https://pkg.go.dev/net/http"}
+
+Step 3: Search for code examples
+  Tool: google_search
+  Args: {"query": "site:github.com golang http client example"}
+```
+
+### Workflow 7: API Testing and Integration
+
+Test and interact with REST APIs:
+
+```
+Step 1: Test API health endpoint
+  Tool: web_fetch
+  Args: {"url": "https://api.example.com/health", "timeout": "5s"}
+
+Step 2: Authenticate and get token
+  Tool: web_fetch
+  Args: {
+    "url": "https://api.example.com/auth/login",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": "{\"username\": \"user\", \"password\": \"pass\"}"
+  }
+
+Step 3: Make authenticated request
+  Tool: web_fetch
+  Args: {
+    "url": "https://api.example.com/data",
+    "headers": {"Authorization": "Bearer <token-from-step-2>"}
+  }
+```
+
+### Workflow 8: Web Scraping and Content Analysis
+
+Fetch and process web content:
+
+```
+Step 1: Fetch a web page
+  Tool: web_fetch
+  Args: {"url": "https://example.com/page", "max_size": 5242880}
+
+Step 2: Parse content using command-line tools
+  Tool: execute_command
+  Args: {"command": "echo '<html-content>' | grep -o '<title>.*</title>'"}
 ```
 
 ## Error Handling
@@ -764,6 +1011,69 @@ Step 2: Verify installation
 1. Ensure `X-MCP-Auth-Token` header is included in request
 2. Verify token matches server's `MCP_AUTH_TOKEN` configuration
 3. Check for typos in token value
+
+### Error: Invalid URL (web_fetch)
+
+**Error Message**: `Invalid URL: ...` or `URL must use http:// or https:// protocol`
+
+**Cause**: URL is malformed or missing protocol scheme.
+
+**Solution**:
+1. Ensure URL includes `http://` or `https://`
+2. Verify URL is properly formatted
+3. Check for special characters that may need encoding
+
+**Example**:
+```json
+{
+  "isError": true,
+  "content": [{
+    "type": "text",
+    "text": "URL must use http:// or https:// protocol"
+  }]
+}
+```
+
+### Error: Request Failed (web_fetch)
+
+**Error Message**: `Request failed: ...`
+
+**Cause**: Network error, DNS resolution failure, or connection refused.
+
+**Solution**:
+1. Verify the URL is accessible
+2. Check for network connectivity issues
+3. Verify firewall settings
+4. Try increasing timeout for slow servers
+
+### Error: Response Too Large (web_fetch)
+
+**Cause**: Response body exceeds `max_size` limit.
+
+**Solution**:
+1. Increase `max_size` parameter (up to 10MB)
+2. Truncated response body will still be returned
+3. Consider if full response is needed
+
+### Error: Request Timeout (web_fetch/google_search)
+
+**Error Message**: `Request failed: context deadline exceeded`
+
+**Cause**: Request took longer than configured timeout.
+
+**Solution**:
+1. Increase `timeout` parameter
+2. Check if target server is slow or unresponsive
+3. Consider using HEAD request to check availability first
+
+### Error: HTTP 429 Too Many Requests (google_search)
+
+**Cause**: Rate limiting by Google due to too many search requests.
+
+**Solution**:
+1. Wait before making additional requests
+2. Reduce request frequency
+3. Consider using Google Custom Search API for higher limits
 
 ## Parameter Formats
 
