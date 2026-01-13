@@ -140,61 +140,87 @@ func main() {
 }
 
 func registerTools(server *mcp.Server) {
+	// Helper for creating bool pointers
+	boolPtr := func(b bool) *bool { return &b }
+
 	// Register execute_command tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "execute_command",
-		Description: "Execute a system command and return its output. Supports timeout, working directory, and environment variables.",
+		Description: "Execute a system command and return its output. Commands are validated against allow/block lists before execution - use list_allowed_commands and list_blocked_commands to check what's permitted. Supports timeout, working directory, and environment variables.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"command": {
 					Type:        "string",
-					Description: "The command to execute",
+					Description: "The command to execute. Will be validated against configured allow/block lists before execution.",
 				},
 				"working_directory": {
 					Type:        "string",
-					Description: "Working directory for command execution (optional)",
+					Description: "Working directory for command execution. If relative, resolved relative to server's current working directory. If not specified, uses the server's current working directory.",
 				},
 				"timeout": {
 					Type:        "string",
-					Description: "Timeout duration (e.g., '30s', '5m'). Default is 30s",
+					Description: "Timeout duration in Go duration format. Valid examples: '30s' (30 seconds), '1m' (1 minute), '5m' (5 minutes), '1h' (1 hour), '1m30s' (1 minute 30 seconds). Default is 30s. Maximum recommended: 1h.",
 				},
 				"env": {
 					Type:        "object",
-					Description: "Environment variables to set for the command (optional)",
+					Description: "Environment variables as key-value pairs (e.g., {\"NODE_ENV\": \"production\", \"DEBUG\": \"true\"}). These are added to the command's environment, supplementing (not replacing) existing environment variables.",
+					Properties:  map[string]mcp.Property{},
 				},
 			},
 			Required: []string{"command"},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			Title:           "Execute Command",
+			ReadOnlyHint:    boolPtr(false),
+			DestructiveHint: boolPtr(true),
+			IdempotentHint:  boolPtr(false),
+			OpenWorldHint:   boolPtr(true),
 		},
 	}, handleExecuteCommand)
 
 	// Register list_allowed_commands tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "list_allowed_commands",
-		Description: "List all allowed command patterns. If empty, all commands are allowed (except blocked ones).",
+		Description: "List all allowed command patterns configured for this server. Use this tool before execute_command to verify if a command will be permitted. If the list is empty, all commands are allowed (except those matching blocked patterns). Commands must match at least one allowed pattern (prefix match) to execute.",
 		InputSchema: mcp.JSONSchema{
 			Type:       "object",
 			Properties: map[string]mcp.Property{},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "List Allowed Commands",
+			ReadOnlyHint:   boolPtr(true),
+			IdempotentHint: boolPtr(true),
 		},
 	}, handleListAllowedCommands)
 
 	// Register list_blocked_commands tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "list_blocked_commands",
-		Description: "List all blocked command patterns.",
+		Description: "List all blocked command patterns configured for this server. Commands matching any blocked pattern will be rejected with an error, even if they match an allowed pattern. Blocked patterns take precedence over allowed patterns. Use this to understand what commands are prohibited before attempting execution.",
 		InputSchema: mcp.JSONSchema{
 			Type:       "object",
 			Properties: map[string]mcp.Property{},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "List Blocked Commands",
+			ReadOnlyHint:   boolPtr(true),
+			IdempotentHint: boolPtr(true),
 		},
 	}, handleListBlockedCommands)
 
 	// Register get_shell_info tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "get_shell_info",
-		Description: "Get information about the shell used for command execution.",
+		Description: "Get information about the shell used for command execution, including the shell path, shell argument, and default timeout. Useful for understanding how commands will be interpreted and executed.",
 		InputSchema: mcp.JSONSchema{
 			Type:       "object",
 			Properties: map[string]mcp.Property{},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "Get Shell Info",
+			ReadOnlyHint:   boolPtr(true),
+			IdempotentHint: boolPtr(true),
 		},
 	}, handleGetShellInfo)
 }

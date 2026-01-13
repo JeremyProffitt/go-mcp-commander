@@ -65,9 +65,24 @@ type InitializeResult struct {
 
 // Tool types
 type Tool struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	InputSchema JSONSchema `json:"inputSchema"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	InputSchema JSONSchema       `json:"inputSchema"`
+	Annotations *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations provides hints about tool behavior for LLM decision-making
+type ToolAnnotations struct {
+	// Title is a human-readable title for the tool
+	Title string `json:"title,omitempty"`
+	// ReadOnlyHint indicates if the tool only reads data without modifying system state
+	ReadOnlyHint *bool `json:"readOnlyHint,omitempty"`
+	// DestructiveHint indicates if the tool may perform destructive operations
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+	// IdempotentHint indicates if calling the tool multiple times has the same effect
+	IdempotentHint *bool `json:"idempotentHint,omitempty"`
+	// OpenWorldHint indicates if the tool interacts with external entities
+	OpenWorldHint *bool `json:"openWorldHint,omitempty"`
 }
 
 type JSONSchema struct {
